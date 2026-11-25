@@ -1,0 +1,61 @@
+# 进度日志
+
+## 2026-08-02
+
+- 对比两个项目 ets 目录：copy2 独缺 GattServerService 及组件目录；copy2 独有 RoleStore/AlertService 等新功能。
+- 确认 module.json5 权限一致（都有 ACCESS_BLUETOOTH）。
+- 确认 copy2 的 EEGDataStore/MockDataService/BleService 接口与移植需求兼容。
+- 确认小程序代码位置与蓝牙能力缺口。
+- 建立本规划文件。
+- 移植 GattServerService.ets 到 copy2（字节级复制）。
+- Index.ets 集成完成：导入/状态/生命周期回调、教师模式设备页接收面板（开关/预览/日志/演示）、个人模式头部小程序开关、设备弹窗快捷入口。
+- 括号平衡检查 479/479，无命名冲突。
+- 小程序端新增 pages/blelink（扫描/连接/MTU 协商/分片写帧），注册 app.json，首页加入口卡片；node --check 与 JSON 校验通过。
+- 确认两项目 SDK 均 6.1.0(23)，移植的 @ohos.bluetooth.ble 用法与 copy2 现有 BleService 一致。
+- 新增联调说明文档。
+- 按用户需求重构 UI 架构：真实设备（星闪）与演示（小程序模拟）双数据源明确分层。
+  - 教师头部/监测页统计改为「星闪 N · 演示 M」；设备卡片与设备选择弹窗增加「真实/演示」标签。
+  - 设备管理页重构为两分区：星闪真实设备（扫描/连接/已连接列表/断开）+ 演示小程序模拟（接收面板），整页可滚动。
+  - 个人模式头部：设备名加数据源标签，小程序开关改名为「演示」。
+  - 接收面板文案标注"模拟数据用于比赛演示 · 真实数据请走星闪连接"。
+- EEGDataStore 增加 renameDevice；BleService 多设备扫描放宽为显示所有附近设备（不再按名称过滤）。
+- 排查"真实设备搜索不到"：确认 H3863 双模芯片（BLE 5.2 + 星闪 SLE 1.0），星闪与 BLE 是独立协议栈；App 之前全走 BLE，SLE 设备必然搜不到。
+- 新增 `service/NearLinkService.ets`：星闪扫描（关键词过滤）+ SSAP 客户端连接 + 自动查找 NOTIFY 属性并开启属性通知 + JSON 解析写入 EEGDataStore；权限动态申请助手 `ensureNearLinkPermission`。
+- module.json5 增加 `ohos.permission.ACCESS_NEARLINK`（reason: nearlink_reason），string.json 增加原因文案；EntryAbility 启动时动态申请。
+- Index.ets 设备管理页改为双协议扫描：星闪扫描行（设备名输入框 + 扫描/停止）+ 蓝牙扫描行（原逻辑保留）+ 合并"附近设备"列表（星闪/蓝牙标签），连接/断开按协议路由；协议标签方法 getProtocolTag/getProtocolTagColor；头部徽章改为"真实 N · 演示 M"。
+- 新增 `星闪真机联调说明.md`：排查结论、联调步骤、常见问题、固件侧待确认清单。
+- 静态检查：三个改动 ets 文件括号平衡 OK；module.json5/string.json JSON 合法。
+- 优化脑控飞行游戏（GamePage）响应：根因是"300ms 帧率的小程序数据 + 两层慢 EMA 平滑 + 死区"导致控制延迟约半秒。
+  - 小程序 blelink 帧间隔 300ms → 150ms（有 busy 防重入，MTU 247 下单帧 1~2 次写入安全）。
+  - GamePage 控制链路：慢平滑 SMOOTH_A(0.20) 换成快控制 CTRL_EMA(0.50)；飞机 EMA 0.28 → 0.45；死区 5 → 3；专注移动速度 0.10 → 0.18；基础卷轴 2.5 → 2.2。
+  - 障碍物通道中心偏向飞机当前位置（±130），降低单通道脑环延迟/误差带来的撞墙。
+- 排查"通电后 BLE 与星闪都搜不到"：发现两个工程**从未动态申请 ACCESS_BLUETOOTH**（鸿蒙上为 user_grant，不申请则 startBLEScan 抛 201，扫描静默失败）。
+  - 新增 `utils/PermissionUtils.ets`：checkPermissionGranted / ensureBluetoothPermission / ensureNearLinkPermission。
+  - EntryAbility 启动时同时申请蓝牙 + 星闪权限；BLE 扫描按钮先检查/申请权限再扫描。
+  - BleService 增加 onScanError 回调：201 → 提示"蓝牙权限未授权"，其余 → 提示检查蓝牙开关。
+  - 设备页新增"链路自检"面板：实时显示蓝牙/星闪权限状态，引导用户到系统设置授权。
+  - 说明：若权限已授权、系统蓝牙/星闪仍搜不到小熊派，则问题在设备侧（固件未广播 / 供电 / 平板无星闪硬件）。
+- 用户体验系统性审查（以使用者身份通读全部 11 个页面）并修复：
+  - 游戏页（GamePage）新增"✕"退出按钮（此前只能切底部 Tab 才能退出）。
+  - 个人模式新增"扫描真实设备"入口：设备选择弹窗加"🔍 扫描真实设备（星闪/蓝牙）"行，弹窗加宽；点击进入全屏扫描面板（复用双协议扫描 + 链路自检 + 已连接/附近设备列表），连接后返回即可在头部切换设备。
+  - 触控目标加大：个人/监护者头部返回键、学生详情返回键、情绪页"算法原理/情绪舒缓"、意念页与训练页导航胶囊（top/bottom 8→12）、设备页扫描按钮与输入框（30→34）。
+  - "我的"页设备信息文案更新：通信改为"星闪 SLE + BLE 双模"、数据同步改为"星闪 / 蓝牙 · 实时脑波传输"、平台改为 HarmonyOS API 23。
+  - 清理结论：BlinkPage 未注册路由且无引用（死代码，未改动）。
+- 蓝牙可搜索到但连接无反馈问题（用户反馈）：补齐完整连接状态机与诊断反馈。
+  - BleService：新增 onDeviceError 回调（连接被拒/超时、无可用特征、通知开启失败、数据格式无法解析均给出明确提示）；连接行显示"连接中…"；成功/失败均触发界面刷新与 Toast。
+  - 协议兜底：EE01/EE02 未命中时自动匹配 UART 透传类服务（FFE0/FFF0/Nordic UART/ISSC）或第一个可通知特征，并记录匹配结果。
+  - MTU/连接参数协商失败不再阻断流程（默认 MTU 仍可分片收数据）。
+  - 连接成功即设置活跃设备；"已连接真实设备"列表区分"在线 · 数据接收中 / 已连接 · 等待数据 / 离线"。
+  - 数据格式诊断：收到 4KB+ 无法解析为 EEG JSON 时提示"固件可能不是本 App 的 JSON 协议"。
+  - NearLinkService 同步增加 isDeviceConnecting、连接失败/格式解析诊断。
+- 小程序滑条实时同步（用户反馈）：
+  - 根因：mock.js 自动模拟每 20ms 覆盖 data.att/med，滑条改值瞬间被冲掉；且发送页没有滑条控件。
+  - 修复：mock.js 增加手动覆盖机制（setManual/applyManualToData，滑条值优先级高于自动模拟）；blelink 发送页新增"手动控制"面板（专注度/冥想度两个滑条，bindchanging 实时更新数值并立即 pushNow 发送一帧到 App，150ms 定时帧继续兜底）；"恢复自动模拟"按钮复位。
+  - 注：桌面无 weixin-miniprogram 副本，小程序实际在 本地小程序模拟端（未纳入本仓库）。
+- 找到小熊派固件 SDK（WS63/H3863 官方 SDK（本地存档））：自带 BLE UART 透传示例（服务 0xABCD / 通知 0xCDEF / 写入 0xEFEF），无 EE01 定义——脑环固件为定制版，App 端已按"自动匹配第一个可通知特征 + UART 服务优先"兜底，可兼容该协议。
+- 用户澄清：桌面实际在 本地桌面目录，真正使用的小程序在 桌面小程序工程（本地存档）（pages/login + pages/send），此前改的 本地小程序模拟端（未纳入本仓库） 是另一份。
+- 滑条不实时同步根因（本地桌面目录 版本）：onSliderChanging 用"拖完 150ms 补发一帧"的尾随节流，拖动过程中一帧都不发；且未点"开始发送"时滑条只改本地数值。
+- 修复（桌面小程序工程（本地存档））：① send.js 改为前沿节流——拖动时立即发一帧、之后每 150ms 一帧、松手后尾随补发最终值；② 新增 ensureSending——拖动滑条/点预设自动开启发送，无需先点"开始发送"；③ utils/ble.js writeJSON 按 MTU 分片写入（原来整帧一次写入，MTU 协商失败会直接失败）；④ 预设场景点击后同样实时发送。
+- 注意力/放松度与 App 专注度/冥想度对应关系（用户需求确认）：
+  - 核对数据链路：小程序 buildData(att/med) → JSON 帧 → App GattServerService 直接解析 → EEGDataStore → 专注度/冥想度显示，全程无字段错位，映射本就一一对应。
+  - 优化实时性：App 接收预览刷新 500ms → 200ms；接收预览标签"专注→专注度、放松→冥想度"；小程序滑条标签注明"注意力·对应App专注度、放松度·对应App冥想度"，演示时对应关系一目了然。

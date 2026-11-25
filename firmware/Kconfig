@@ -1,0 +1,82 @@
+#===============================================================================
+# @brief    Kconfig of EEG Brain Ring sample (BLE + SLE dual mode).
+#           Drop this folder into application/samples/products/eeg_ring and
+#           wire it into application/samples/products/Kconfig + CMakeLists.txt.
+#===============================================================================
+
+if SAMPLE_SUPPORT_EEG_RING
+    config EEG_RING_TX_INTERVAL_MS
+        int
+        prompt "EEG frame send interval (ms)"
+        default 500
+        help
+            How often a JSON frame is sent to connected clients. 500 means 2 Hz.
+
+    config EEG_SENSOR_NO_SIGNAL_TIMEOUT_MS
+        int
+        prompt "No-signal timeout before contact-lost frame (ms)"
+        default 2000
+        help
+            If no valid sensor data is received for this long, the firmware
+            sends a contact-lost frame (sig=200) instead of old values.
+
+    config EEG_SENSOR_UART_BUS
+        int
+        prompt "EEG sensor UART bus (0/1/2, see board.json)"
+        default 2
+        help
+            UART bus index used by the NeuroSky sensor. BearPi board.json maps
+            UART2 -> S_AGPIO8/9, UART3 -> S_AGPIO12/13.
+
+    config EEG_SENSOR_UART_TXD_PIN
+        int
+        prompt "EEG sensor UART TXD pin"
+        default 12
+
+    config EEG_SENSOR_UART_RXD_PIN
+        int
+        prompt "EEG sensor UART RXD pin"
+        default 13
+
+    config EEG_SENSOR_UART_BAUDRATE
+        int
+        prompt "EEG sensor UART baudrate"
+        default 57600
+        help
+            NeuroSky TGAM1/BMD101 modules use 57600 by default.
+
+    choice
+        prompt "EEG sensor backend"
+        default EEG_SENSOR_MODE_NEUROSKY
+        config EEG_SENSOR_MODE_NEUROSKY
+            bool "NeuroSky TGAM/BMD101 UART (recommended)"
+            help
+                Parse the NeuroSky serial protocol (0xAA 0xAA ...). The app's
+                frame fields (att/med + 8 bands + raw + sig) match NeuroSky
+                eSense 1:1, so most commercial brain rings use this chip.
+        config EEG_SENSOR_MODE_ADC
+            bool "ADC direct sampling (experimental)"
+            help
+                Sample an ADC pin directly and compute RMS + 8 band powers with
+                Goertzel filters. Requires knowing the electrode wiring and an
+                analog front-end; bands are real DSP output, not simulated.
+    endchoice
+
+    config EEG_SENSOR_ADC_CHANNEL
+        int
+        prompt "ADC channel for EEG electrode"
+        default 0
+        depends on EEG_SENSOR_MODE_ADC
+
+    config EEG_SENSOR_ADC_CONTACT_MV
+        int
+        prompt "ADC contact RMS threshold (mV)"
+        default 20
+        depends on EEG_SENSOR_MODE_ADC
+        help
+            RMS below this value means the electrode is not touching skin.
+endif
+
+config SUPPORT_SLE_PERIPHERAL
+    bool
+    default y if (SAMPLE_SUPPORT_EEG_RING)
